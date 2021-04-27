@@ -18,6 +18,8 @@ from django.db.utils import DEFAULT_DB_ALIAS, load_backend
 from .openfoam import run_openfoam
 
 OPENFOAM_PATH = '/home/gowthaman/group_project/simulator/files/basecases/compressed/test/0012_Re7e5_AoA12'
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+
 
 class CreateUserView(CreateAPIView):
 
@@ -41,12 +43,16 @@ def create_connection(alias=DEFAULT_DB_ALIAS):
     return backend.DatabaseWrapper(db, alias)
 
 
-def run_ml(id, rn, aoa):
-    BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+def run_ml(simulation_id, job_id, rn, aoa):
+    
     python_file = BASE_DIR + '/files/neural_network/NN_prediction.py'
-    call(["python3", python_file, str(rn), str(aoa) , str(id), BASE_DIR + '/files'])
+    base_compressed_path = BASE_DIR + '/files/basecases/compressed/basecase_' + str(simulation_id) + '.tar.gz'
+    base_case_path = BASE_DIR + '/files/basecases/flattened/basecase_' + str(job_id)
+    temp_path = BASE_DIR + '/files/basecases/flattened/temp/' + str(job_id)
 
-    with open(BASE_DIR + '/files/output_data/ml_output_' + str(id) + '.json') as json_file:
+    call(["python3", python_file, str(rn), str(aoa) , str(simulation_id), BASE_DIR + '/files'])
+
+    with open(BASE_DIR + '/files/output_data/ml_output_' + str(simulation_id) + '.json') as json_file:
         data = json.load(json_file)
     
     predicted_lift = round(data['lift'],6)
@@ -58,29 +64,42 @@ def run_ml(id, rn, aoa):
 
     conn = create_connection()
     cursor = conn.cursor()
-    error_query = f'UPDATE openfoam_resultsmodel set predicted_lift={predicted_lift}, predicted_drag={predicted_drag}, ca1={ca1},ca2={ca2}, ce1 = {ce1}, ce2={ce2} WHERE id={id}'
+    error_query = f'UPDATE openfoam_resultsmodel set predicted_lift={predicted_lift}, predicted_drag={predicted_drag}, ca1={ca1},ca2={ca2}, ce1 = {ce1}, ce2={ce2} WHERE id={job_id}'
 
     cursor.execute(error_query)
     conn.close()
 
-    lift_drag = run_openfoam(rn, aoa, ca1, ca2, ce1, ce2, OPENFOAM_PATH)
+    os.system('mkdir -p ' + temp_path)
+
+    os.system('tar -xvzf ' + base_compressed_path + ' --directory ' + temp_path)
+
+    os.system('mv ' + temp_path + '/* ' + base_case_path)
+
+    print('mkdir -p ' + temp_path)
+    print('tar -xvzf ' + base_compressed_path + ' --directory ' + temp_path)
+    print('mv ' + temp_path + '/* ' + base_case_path)
+
+    lift_drag = run_openfoam(rn, aoa, ca1, ca2, ce1, ce2, base_case_path)
 
     actual_lift = lift_drag['lift']
     actual_drag = lift_drag['drag']
     
     conn = create_connection()
     cursor = conn.cursor()
-    error_query = f'UPDATE openfoam_resultsmodel set actual_lift={actual_lift}, actual_drag={actual_drag} WHERE id={id}'
+    error_query = f'UPDATE openfoam_resultsmodel set actual_lift={actual_lift}, actual_drag={actual_drag} WHERE id={job_id}'
 
     cursor.execute(error_query)
     conn.close()
 
+    os.system('rm -r ' + temp_path)
+    os.system('rm -r ' + base_case_path)
 
-def handle_uploaded_file(file, id):
 
-    BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+def handle_uploaded_file(file, file_path):
 
-    with open(BASE_DIR + '/files/training_data_' + str(id) , 'wb+') as destination:
+    
+
+    with open( file_path, 'wb+') as destination:
         for chunk in file.chunks():
             destination.write(chunk)
 
@@ -99,6 +118,7 @@ class AddSimulationView(APIView):
 
     def post(self, request, **kwargs):
         file_obj = request.FILES.get('file', '')
+        basecase_obj = request.FILES.get('base_file', '')
         
         name = request.POST['name']
 
@@ -116,7 +136,11 @@ class AddSimulationView(APIView):
         # p = Process(target=train_ml, args=())
         # p.start()
 
-        handle_uploaded_file(file_obj, id)
+        data_file_path = BASE_DIR + '/files/training_data_' + str(id)
+        base_file_path = BASE_DIR + '/files/basecases/compressed/basecase_' + str(id) + '.tar.gz'
+
+        handle_uploaded_file(file_obj, data_file_path)
+        handle_uploaded_file(basecase_obj, base_file_path)
 
         model = SimulationModel.objects.get(name=name)
         model.status = 'completed'
@@ -146,7 +170,7 @@ class RunSimulationView(APIView):
         result = ResultsModel.objects.create(simulation_id=simulation_id, name=data['name'], aoa=data['aoa'], rn=data['rn'], start_time=datetime.now())
         id = result.id
 
-        p = Process(target=run_ml, args=(id, data['rn'], data['aoa']))
+        p = Process(target=run_ml, args=(simulation_id, id, data['rn'], data['aoa']))
         p.start()
 
         return Response({})
