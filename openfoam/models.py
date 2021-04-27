@@ -9,6 +9,7 @@ class SimulationModel(models.Model):
     type = models.CharField(max_length=100, null=False)
     file_name = models.CharField(max_length=100, null=False)
     status = models.CharField(max_length=10, null=False)
+    rn = models.IntegerField(null=True)
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,null=False)
 
 
@@ -24,6 +25,5 @@ class ResultsModel(models.Model):
     actual_lift = models.DecimalField(max_digits=10, decimal_places=6, null=True)
     actual_drag = models.DecimalField(max_digits=10, decimal_places=6, null=True)
     aoa = models.IntegerField(null=True)
-    rn = models.IntegerField(null=True)
     start_time = models.DateTimeField()
     end_time = models.DateTimeField(null=True)

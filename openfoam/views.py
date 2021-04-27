@@ -95,9 +95,30 @@ def run_ml(simulation_id, job_id, rn, aoa):
     os.system('rm -r ' + base_case_path)
 
 
-def handle_uploaded_file(file, file_path):
+def read_reynolds_number(file_path, id):
 
+    temp_path = BASE_DIR + '/files/basecases/flattened/temp/upload/' + str(id)
+
+    os.system('mkdir -p ' + temp_path)
+    os.system('tar -xvzf ' + file_path + ' --directory ' + temp_path)
+    os.system('mv ' + temp_path + '/* ' + temp_path + '/basecase')
+
+    with open(temp_path + '/basecase/parameters', 'r') as file:
+        data = file.readlines()
     
+    reynolds = data[14]
+
+    import re
+    reynolds = re.sub(' +',' ',reynolds)
+    reynolds = reynolds.replace(';','')
+    reynolds = reynolds.split(' ')[1]
+
+    os.system('rm -r ' + temp_path)
+    return int(reynolds)
+
+
+
+def handle_uploaded_file(file, file_path):
 
     with open( file_path, 'wb+') as destination:
         for chunk in file.chunks():
@@ -136,14 +157,19 @@ class AddSimulationView(APIView):
         # p = Process(target=train_ml, args=())
         # p.start()
 
-        data_file_path = BASE_DIR + '/files/training_data_' + str(id)
+        data_file_path = BASE_DIR + '/files/training/training_data_' + str(id)
         base_file_path = BASE_DIR + '/files/basecases/compressed/basecase_' + str(id) + '.tar.gz'
 
         handle_uploaded_file(file_obj, data_file_path)
         handle_uploaded_file(basecase_obj, base_file_path)
 
+        os.system('cp ' + BASE_DIR + "/files/neural_network/mymodel.h5 " + BASE_DIR + "/files/training/model_" + str(id) + ".h5")
+
+        rn = read_reynolds_number(base_file_path, id)
+
         model = SimulationModel.objects.get(name=name)
         model.status = 'completed'
+        model.rn = rn
         model.save()
 
         return Response({"id" : model.id, 'status' : 'success'})
@@ -159,18 +185,21 @@ class RunSimulationView(APIView):
         results = []
         for row in data:
             date_time = row.start_time.strftime("%d-%m-%Y %H:%M:%S")
-            results.append({'name' : row.name, 'id' : row.id, 'ca1' : row.ca1, 'ca2' : row.ca2, 'ce1' : row.ce1, 'ce2' : row.ce2, 'predicted_lift' : row.predicted_lift, 'predicted_drag' : row.predicted_drag, 'actual_lift' : row.actual_lift, 'actual_drag' : row.actual_drag, 'aoa' : row.aoa, 're' : row.rn, 'start_time' : date_time})
+            results.append({'name' : row.name, 'id' : row.id, 'ca1' : row.ca1, 'ca2' : row.ca2, 'ce1' : row.ce1, 'ce2' : row.ce2, 'predicted_lift' : row.predicted_lift, 'predicted_drag' : row.predicted_drag, 'actual_lift' : row.actual_lift, 'actual_drag' : row.actual_drag, 'aoa' : row.aoa, 'start_time' : date_time})
         
-        return Response({'data' : results})
+        row = SimulationModel.objects.get(id=simulation_id)
+        return Response({'data' : results, 'rn' : row.rn, 'simulation_name' : row.name})
 
     def post(self, request, **kwargs):
         simulation_id = request.GET['id']
         data = request.data
 
-        result = ResultsModel.objects.create(simulation_id=simulation_id, name=data['name'], aoa=data['aoa'], rn=data['rn'], start_time=datetime.now())
+        result = ResultsModel.objects.create(simulation_id=simulation_id, name=data['name'], aoa=data['aoa'], start_time=datetime.now())
         id = result.id
 
-        p = Process(target=run_ml, args=(simulation_id, id, data['rn'], data['aoa']))
+        row = SimulationModel.objects.get(id=simulation_id)
+
+        p = Process(target=run_ml, args=(simulation_id, id, row.rn, data['aoa']))
         p.start()
 
         return Response({})
