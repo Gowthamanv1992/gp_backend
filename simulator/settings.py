@@ -94,7 +94,7 @@ WSGI_APPLICATION = 'simulator.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.contrib.gis.db.backends.postgis',
+        'ENGINE': 'django.db.backends.postgresql_psycopg2',
         'NAME': 'simulation',
         'USER': 'postgres',
         'PASSWORD': 'password',
