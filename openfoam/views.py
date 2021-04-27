@@ -17,7 +17,7 @@ from django.db import connections
 from django.db.utils import DEFAULT_DB_ALIAS, load_backend
 from .openfoam import run_openfoam
 
-OPENFOAM_PATH = ''
+OPENFOAM_PATH = '/home/gowthaman/group_project/simulator/files/basecases/compressed/test/0012_Re7e5_AoA12'
 
 class CreateUserView(CreateAPIView):
 
@@ -63,9 +63,17 @@ def run_ml(id, rn, aoa):
     cursor.execute(error_query)
     conn.close()
 
-    output_file = BASE_DIR + '/files/output_data/openfoam_output_' + str(id) + '.json'
-    run_openfoam(rn, aoa, ca1, ca2, ce1, ce2, OPENFOAM_PATH, output_file)
+    lift_drag = run_openfoam(rn, aoa, ca1, ca2, ce1, ce2, OPENFOAM_PATH)
 
+    actual_lift = lift_drag['lift']
+    actual_drag = lift_drag['drag']
+    
+    conn = create_connection()
+    cursor = conn.cursor()
+    error_query = f'UPDATE openfoam_resultsmodel set actual_lift={actual_lift}, actual_drag={actual_drag} WHERE id={id}'
+
+    cursor.execute(error_query)
+    conn.close()
 
 
 def handle_uploaded_file(file, id):

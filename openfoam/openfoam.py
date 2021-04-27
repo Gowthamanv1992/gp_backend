@@ -24,7 +24,7 @@ def edit_closure_coeff(re, aoa, ca1, ca2, ce1, ce2, path):
         file.writelines( data )
 
  
-def create_output(output_path):
+def fetch_output(path):
 
     output_dir = ''
 
@@ -56,16 +56,14 @@ def create_output(output_path):
             elif line[0] == 'Cd':
                 cd = line[1].replace(';','')
     
-    shutil.move(path + '/' + output_dir, output_path)
 
     output_dict = {'lift' : cl, 'drag' : cd}
 
-    with open(output_file, 'w') as file:
-        json.dump(output_dict, file)
+    return output_dict
 
 
-def run_openfoam(re, aoa, ca1, ca2, ce1, ce2, path, output_file):
+def run_openfoam(re, aoa, ca1, ca2, ce1, ce2, path):
     edit_closure_coeff(re, aoa, ca1, ca2, ce1, ce2, path)
     subprocess.call('simpleFoam', cwd = path)
-    output_path = path + '/processed_output/ca1_{ca1}_ca2_{ca2}_ce1_{ce1}_ce2_{ce2}'.format(ca1=ca1,ca2=ca2,ce1=ce1,ce2=ce2)
-    create_output(output_path)
+    output = fetch_output(path)
+    return output
